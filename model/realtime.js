@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { Server } from "socket.io";
 
 const RealtimeSchema = new mongoose.Schema(
   {
@@ -31,8 +30,6 @@ export async function createData(data) {
   console.log(newData);
 
   await newData.save();
-  const io = global.io || Server;
-  if (io) io.emit("updateChart", newData.toObject());
   return newData.toObject();
 }
 
