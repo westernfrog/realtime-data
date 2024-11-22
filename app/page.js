@@ -11,25 +11,53 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
-import { useState, useEffect } from "react";
+import { getSocket } from "@/socket";
+import { useEffect, useMemo, useState } from "react";
 
 export default function Home() {
   const [isOpen, setIsOpen] = useState(false);
   const [chartData, setChartData] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [transport, setTransport] = useState("N/A");
+
+  const socket = useMemo(() => getSocket().connect(), []);
 
   useEffect(() => {
+    function handleConnect() {
+      setIsConnected(true);
+      setTransport(socket.io.engine.transport.name);
+
+      socket.io.engine.on("upgrade", (transport) => {
+        setTransport(transport.name);
+      });
+    }
+
+    function handleDisconnect() {
+      setIsConnected(false);
+      setTransport("N/A");
+    }
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch("/api/getData");
+        const result = await response.json();
+        setChartData(result.data || []);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
     fetchData();
   }, []);
-
-  const fetchData = async () => {
-    try {
-      const response = await fetch("/api/getData");
-      const result = await response.json();
-      setChartData(result.data);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -42,14 +70,9 @@ export default function Home() {
       return;
     }
 
-    const newData = {
-      throughput,
-      rssi,
-    };
+    const newData = { throughput, rssi };
 
     try {
-      console.log(newData);
-
       const response = await fetch("/api/createData", {
         method: "POST",
         headers: {
@@ -76,15 +99,8 @@ export default function Home() {
         <div style={{ width: "100%", height: 400 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
-              width={500}
-              height={300}
               data={chartData}
-              margin={{
-                top: 5,
-                right: 30,
-                left: 20,
-                bottom: 5,
-              }}
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
@@ -121,36 +137,34 @@ export default function Home() {
             className="relative z-50"
           >
             <div className="fixed inset-0 flex w-screen items-center justify-center p-4 bg-black/60">
-              <DialogPanel
-                transition
-                className="min-w-7xl lg:w-[30%] space-y-4 bg-[#111] border border-white/10 rounded-xl p-6"
-              >
-                <DialogTitle className="font-bold text-lg flex items-center gap-2">
+              <DialogPanel className="w-full max-w-lg space-y-4 bg-[#111] border border-white/10 rounded-xl p-6">
+                <DialogTitle className="font-bold text-lg">
                   Realtime Data
                 </DialogTitle>
-                <form
-                  action=""
-                  onSubmit={handleSubmit}
-                  className="space-y-6 py-4"
-                >
-                  <div className="border-1 border-b ring-white mb-2">
-                    <label htmlFor="throughput" className="font-bold">
+                <form onSubmit={handleSubmit} className="space-y-6 py-4">
+                  <div className="mb-4">
+                    <label
+                      htmlFor="throughput"
+                      className="block font-bold mb-1"
+                    >
                       Throughput
                     </label>
                     <input
                       type="number"
                       name="throughput"
-                      className="bg-transparent w-full ring-0 border-0 placeholder-white focus:outline-0 focus:ring-0 px-0 py-1 text-sm"
+                      required
+                      className="w-full bg-transparent border-b border-white/10 px-2 py-1 focus:outline-none focus:ring-0"
                     />
                   </div>
-                  <div className="border-1 border-b ring-white mb-2">
-                    <label htmlFor="rssi" className="font-bold">
+                  <div className="mb-4">
+                    <label htmlFor="rssi" className="block font-bold mb-1">
                       RSSI
                     </label>
                     <input
                       type="number"
                       name="rssi"
-                      className="bg-transparent w-full ring-0 border-0 placeholder-white focus:outline-0 focus:ring-0 px-0 py-1 text-sm"
+                      required
+                      className="w-full bg-transparent border-b border-white/10 px-2 py-1 focus:outline-none focus:ring-0"
                     />
                   </div>
                   <button
@@ -163,6 +177,10 @@ export default function Home() {
               </DialogPanel>
             </div>
           </Dialog>
+        </div>
+        <div className="mt-4 text-center">
+          <p>Status: {isConnected ? "Connected" : "Disconnected"}</p>
+          <p>Transport: {transport}</p>
         </div>
       </section>
     </main>
